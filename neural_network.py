@@ -35,6 +35,7 @@ class NeuralNetwork(t.nn.Module):
         for _ in range(hidden_layers):
             layers.append(t.nn.Linear(current_size, neurons_per_hidden_layer))
             layers.append(t.nn.ReLU())  # Activation function
+            #layers.append(t.nn.LeakyReLU()) #TODO try this, it lowers the loss by ~6 points
             current_size = neurons_per_hidden_layer
         
         # Add output layer (last hidden -> output)
@@ -47,7 +48,7 @@ class NeuralNetwork(t.nn.Module):
                 # This helps prevent vanishing/exploding gradients
                 t.nn.init.xavier_uniform_(layer.weight)
                 # Initialize biases to zero
-                t.nn.init.constant_(layer.bias, 0.0)
+                t.nn.init.zeros_(layer.bias)
 
 
         # Combine all layers into a sequential model
@@ -63,8 +64,8 @@ class NeuralNetwork(t.nn.Module):
         Returns:
             torch.Tensor: Network predictions
         """
-        #TODO torch.relu is a thresholding function
-        #TODO try leaky relu to see if it works better
+        
+        
         return self.network(x)
 
 

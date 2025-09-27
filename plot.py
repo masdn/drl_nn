@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 # TODO produce a table of testing losses for the model state with the 
 # loweest eval loss for each model state
+#TODO make a table of the mean and standard deviation of the testing times
 
 data = np.load("losses.npz")
 

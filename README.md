@@ -28,4 +28,5 @@
 - Explain insights gained from the self-directed experiment
 ## ACKNOWLEDGEMENTS
 - Miles: Used Cursor IDE with claude-4-sonnet and gpt-5 in the chat window to give context and ask questions about the code.
+- Dylan:
 

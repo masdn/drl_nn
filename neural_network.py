@@ -119,6 +119,8 @@ def setup_training_components(model, learning_rate=0.01):
     # Optimizer: Adam
     # This is the "learning algorithm" that adjusts the network's weights to reduce loss
     # Adam is popular because it adapts the learning rate automatically and works well in practice
+
+    ##TODO try different optimizers/ learning rates HERE
     optimizer = t.optim.Adam(
         model.parameters(),  # Tell optimizer which weights to update (all network parameters)
         lr=learning_rate     # Learning rate controls step size during weight updates
@@ -158,7 +160,7 @@ def main():
     print(f"Optimizer: {optimizer}")
     print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
 
-
+    ##TODO try different training sizes HERE
     num_epochs = 1000
     for epoch in range(num_epochs):
         # Training phase

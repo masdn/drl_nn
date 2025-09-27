@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# TODO produce a table of testing losses for the model state with the 
+# loweest eval loss for each model state
+
 data = np.load("losses.npz")
 
 training_loss = data["training_loss"]

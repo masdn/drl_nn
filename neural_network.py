@@ -1,5 +1,11 @@
 import numpy as np
 import torch as t
+from torch.utils.data import DataLoader, TensorDataset
+import time
+
+#TODO Check over all parameters tested and ensure AI didn't hallucinate
+#     There may be more parameters we need to test. 
+#TODO Self-Directed Investigation portion of assignment, need hypothesis first about it.
 
 def assignment():
     return "cpu"
@@ -72,7 +78,7 @@ class NeuralNetwork(t.nn.Module):
 # Create and instantiate the neural network
 # This demonstrates how to create a neural network with the class we just defined
 
-def create_neural_network(data):
+def create_neural_network(data, hidden_layers=1, neurons_per_hidden_layer=64):
     """
     Create and return a neural network instance.
     This function demonstrates how to instantiate the SimpleNeuralNetwork class.
@@ -82,7 +88,6 @@ def create_neural_network(data):
     """
     # Define network architecture parameters
     input_size = data["training_features"].shape[1]    # Example: 28x28 pixel images flattened (like MNIST digits)
-    hidden_layers = 1  # Two hidden layers with decreasing sizes
     output_size = data["training_labels"].shape[1]       # Example: 10 classes for digit classification (0-9)
     
     # Create the neural network instance
@@ -90,14 +95,14 @@ def create_neural_network(data):
         in_dimension=input_size,
         hidden_layers=hidden_layers,
         output_size=output_size,
-
+        neurons_per_hidden_layer=neurons_per_hidden_layer
     )
     
     return model
 
 
 
-def setup_training_components(model, learning_rate=0.01):
+def setup_training_components(model, optimizer_type="adam", learning_rate=0.01):
     """
     Set up the loss function and optimizer for training the neural network.
     
@@ -120,106 +125,142 @@ def setup_training_components(model, learning_rate=0.01):
     # This is the "learning algorithm" that adjusts the network's weights to reduce loss
     # Adam is popular because it adapts the learning rate automatically and works well in practice
 
-    ##TODO try different optimizers/ learning rates HERE
-    optimizer = t.optim.Adam(
-        model.parameters(),  # Tell optimizer which weights to update (all network parameters)
-        lr=learning_rate     # Learning rate controls step size during weight updates
-    )
-    
+    if optimizer_type == "adam":
+        optimizer = t.optim.Adam(model.parameters(), lr=learning_rate)
+    elif optimizer_type == "sgd":
+        optimizer = t.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    elif optimizer_type == "rmsprop":
+        optimizer = t.optim.RMSprop(model.parameters(), lr=learning_rate)
+    else:
+        raise ValueError(f"Unknown optimizer: {optimizer_type}")
     return loss_function, optimizer
 
+def train_and_evaluate(data, hidden_layers, neurons_per_hidden_layer, optimizer_type, learning_rate, train_size, batch_size=1000, num_epochs=1000):
+    """
+    Train a neural network with the given configuration and evaluate it.
 
-def main():
-    t.manual_seed(13)
+    Args:
+        data (dict): Dictionary of tensors with training, evaluation, and testing features/labels.
+        hidden_layers (int): Number of hidden layers in the network.
+        neurons_per_hidden_layer (int): Number of neurons in each hidden layer.
+        optimizer_type (str): Optimizer type ("adam", "sgd", "rmsprop").
+        learning_rate (float): Learning rate for the optimizer.
+        train_size (int): Number of samples to use for training (subsample if smaller than dataset).
+        batch_size (int): Batch size for training (default: 1000).
+        num_epochs (int): Number of training epochs (default: 1000).
 
-    device = "cuda" if t.cuda.is_available() else "cpu"
-    data = dict(np.load("swept_volume_data.npz"))
+    Saves:
+        - Best model weights (`best_model_*.pth`) when validation loss improves.
+        - Loss histories and configuration (`losses_*.npz`) for later analysis.
+        - Training time in seconds.
+    """
+    # Track training start time
+    start_time = time.time()
 
-    for key, value in data.items():
-        print(key, value.shape)
-        data[key] = t.tensor(value, dtype=t.float32, device=device)
-    # Instantiate the neural network
-    neural_network = create_neural_network(data)
+    # Subsample the training data if a smaller train_size is requested
+    if train_size < len(data["training_features"]):
+        indices = t.randperm(len(data["training_features"]))[:train_size]
+        train_features = data["training_features"][indices]
+        train_labels = data["training_labels"][indices]
+    else:
+        train_features = data["training_features"]
+        train_labels = data["training_labels"]
 
-    # Print network architecture for verification
-    print("Neural Network Architecture:")
-    print(f"Input size: {neural_network.network[0].in_features}")
-    print(f"Hidden layers: {[layer.out_features for layer in neural_network.network if isinstance(layer, t.nn.Linear)][:-1]}")
-    print(f"Output size: {neural_network.network[-1].out_features}")
-    print("\nFull network structure:")
-    print(neural_network)
+    # Wrap features and labels in a TensorDataset and DataLoader for batching
+    train_dataset = TensorDataset(train_features, train_labels)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    # Define loss function and optimizer
-    # These are essential components for training the neural network
-        
-    # Create loss function and optimizer for our neural network
-    loss_fn, optimizer = setup_training_components(neural_network)
+    # Build a fresh neural network and optimizer/loss function for this run
+    neural_network = create_neural_network(data, hidden_layers, neurons_per_hidden_layer)
+    loss_fn, optimizer = setup_training_components(neural_network, optimizer_type, learning_rate)
 
-    print("\nTraining Components Setup:")
-    print(f"Loss function: {loss_fn}")
-    print(f"Optimizer: {optimizer}")
-    print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
+    # Track losses across epochs
+    training_loss_history, validation_loss_history, test_loss_history = [], [], []
+    best_val_loss = float("inf")
+    best_model_state = None
 
-    ##TODO try different training sizes HERE
-    num_epochs = 1000
+    # Main training loop
     for epoch in range(num_epochs):
-        # Training phase
-        neural_network.train()  # Set network to training mode
-        optimizer.zero_grad()
-        predictions = neural_network(data["training_features"])
-        loss = loss_fn(predictions, data["training_labels"])
-        loss.backward() #does the backpropagation
-        optimizer.step()
-        
-        # Validation phase
-        # Track best validation loss and save model when it improves
-        if epoch == 0:
-            best_val_loss = float('inf')  # Initialize with infinity for first comparison
-            best_model_state = None
+        neural_network.train()
+        epoch_loss = 0.0
 
-        neural_network.eval()  # Set network to evaluation mode
-        with t.no_grad():  # Disable gradient computation for validation
+        # Train over all mini-batches
+        for batch_features, batch_labels in train_loader:
+            optimizer.zero_grad()
+            predictions = neural_network(batch_features)
+            loss = loss_fn(predictions, batch_labels)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item() * batch_features.size(0)
+        epoch_loss /= len(train_loader.dataset)
+
+        # Validation step
+        neural_network.eval()
+        with t.no_grad():
             val_predictions = neural_network(data["evaluation_features"])
             val_loss = loss_fn(val_predictions, data["evaluation_labels"])
-            print(f"Validation Loss: {val_loss.item():.4f}")
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_model_state = neural_network.state_dict()
-                print(f"New best validation loss: {best_val_loss:.4f}")
-                print("Saving model...")
-                t.save(best_model_state, "best_model.pth")
+                t.save(best_model_state, f"best_model_h{hidden_layers}_n{neurons_per_hidden_layer}_opt{optimizer_type}_lr{learning_rate}_ts{train_size}_seed{t.initial_seed()}.pth")
 
-        # Testing phase - evaluate on test data every 100 epochs
+        # Test step
         if (epoch + 1) % 100 == 0 or epoch == num_epochs - 1:
-            with t.no_grad():  # Disable gradient computation for testing
+            with t.no_grad():
                 test_predictions = neural_network(data["testing_features"])
                 test_loss = loss_fn(test_predictions, data["testing_labels"])
-                print(f"Test Loss: {test_loss.item():.4f}")
+                test_loss_history.append(test_loss.item())
 
-        # Initialize loss history lists before the training loop (only on first epoch)
-        if epoch == 0:
-            training_loss_history = []
-            validation_loss_history = []
-            test_loss_history = []
-        
-        # Store current epoch losses in history lists
-        training_loss_history.append(loss.item())
+        training_loss_history.append(epoch_loss)
         validation_loss_history.append(val_loss.item())
-        
-        # Add test loss to history when it's computed (every 100 epochs or last epoch)
-        if (epoch + 1) % 100 == 0 or epoch == num_epochs - 1:
-            test_loss_history.append(test_loss.item())
-        
-        # Save all loss histories to npz file on the final epoch
-        if epoch == num_epochs - 1:
-            np.savez("losses.npz", 
-                    training_loss=np.array(training_loss_history),
-                    validation_loss=np.array(validation_loss_history), 
-                    evaluation_loss=np.array(test_loss_history))
-            print("Loss histories saved to losses.npz")
-        
-        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {loss.item():.4f}, Validation Loss: {val_loss.item():.4f}")
-    return "cpu"
+
+    # Compute training time
+    end_time = time.time()
+    train_time = end_time - start_time
+
+    # Save losses, config, and training time
+    np.savez(
+        f"losses_h{hidden_layers}_n{neurons_per_hidden_layer}_opt{optimizer_type}_lr{learning_rate}_ts{train_size}_seed{t.initial_seed()}.npz",
+        training_loss=np.array(training_loss_history),
+        validation_loss=np.array(validation_loss_history),
+        test_loss=np.array(test_loss_history),
+        config=dict(
+            hidden_layers=hidden_layers,
+            neurons_per_hidden_layer=neurons_per_hidden_layer,
+            optimizer=optimizer_type,
+            learning_rate=learning_rate,
+            train_size=train_size,
+            batch_size=batch_size,
+            seed=t.initial_seed(),
+            train_time=train_time,
+        ),
+    )
+
+def main():
+    device = "cpu"
+    data = dict(np.load("swept_volume_data.npz"))
+    for key, value in data.items():
+        data[key] = t.tensor(value, dtype=t.float32, device=device)
+
+    hidden_layers_options = [1, 2, 3]
+    neurons_options = [64, 128]
+    optimizers = ["adam", "sgd", "rmsprop"]
+    learning_rates = [0.1, 0.01, 0.001]
+    train_sizes = [1000, 10000, 100000]
+
+    # List of seeds for replicates
+    seeds = [13, 42, 99, 123, 2025]
+
+    for hl in hidden_layers_options:
+        for n in neurons_options:
+            for opt in optimizers:
+                for lr in learning_rates:
+                    for ts in train_sizes:
+                        for seed in seeds:
+                            print(f"Running config: hidden_layers={hl}, neurons={n}, optimizer={opt}, lr={lr}, train_size={ts}, seed={seed}")
+                            t.manual_seed(seed)
+                            train_and_evaluate(data, hl, n, opt, lr, ts)
+
 
 if __name__ == "__main__":    
     main()

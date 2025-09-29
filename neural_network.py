@@ -21,15 +21,15 @@ class NeuralNetwork(t.nn.Module):
     - An output layer for predictions
     """
     
-    def __init__(self, in_dimension, hidden_layers, output_size, neurons_per_hidden_layer = 64):
+    def __init__(self, in_dimension, out_dimension, hidden_layers, neurons_per_hidden_layer = 64):
         """
         Initialize the neural network.
         
         Args:
-            input_size (int): Number of input features
-            hidden_sizes (list): List of hidden layer sizes [e.g., [128, 64, 32]]
-            output_size (int): Number of output predictions
-            neurons_per_hidden_layer (int): Number of neurons per hidden layer Default is 64
+            in_dimension (int): Number of input features
+            out_dimension (int): Number of output predictions
+            hidden_layers (int): Number of hidden layers
+            neurons_per_hidden_layer (int): Number of neurons per hidden layer (default 64)
         """
         super(NeuralNetwork, self).__init__()
         
@@ -45,7 +45,7 @@ class NeuralNetwork(t.nn.Module):
             current_size = neurons_per_hidden_layer
         
         # Add output layer (last hidden -> output)
-        layers.append(t.nn.Linear(current_size, output_size))
+        layers.append(t.nn.Linear(current_size, out_dimension))
         
         # Initialize weights and biases for better training performance
         for layer in layers:
@@ -87,17 +87,15 @@ def create_neural_network(data, hidden_layers=1, neurons_per_hidden_layer=64):
         SimpleNeuralNetwork: An initialized neural network ready for training
     """
     # Define network architecture parameters
-    input_size = data["training_features"].shape[1]    # Example: 28x28 pixel images flattened (like MNIST digits)
-    output_size = data["training_labels"].shape[1]       # Example: 10 classes for digit classification (0-9)
-    
+    in_dimension = data["training_features"].shape[1]    # Example: 28x28 pixel images flattened (like MNIST digits)
+    out_dimension = data["training_labels"].shape[1]       # Example: 10 classes for digit classification (0-9)
     # Create the neural network instance
     model = NeuralNetwork(
-        in_dimension=input_size,
+        in_dimension=in_dimension,
+        out_dimension=out_dimension,
         hidden_layers=hidden_layers,
-        output_size=output_size,
         neurons_per_hidden_layer=neurons_per_hidden_layer
     )
-    
     return model
 
 
@@ -242,10 +240,10 @@ def main():
     for key, value in data.items():
         data[key] = t.tensor(value, dtype=t.float32, device=device)
 
-    hidden_layers_options = [1, 2, 3]
-    neurons_options = [64, 128]
-    optimizers = ["adam", "sgd", "rmsprop"]
-    learning_rates = [0.1, 0.01, 0.001]
+    hidden_layers_options = [1]
+    neurons_options = [64]
+    optimizers = ["adam"]
+    learning_rates = [0.1, 0.01, 0.001, 0.0001]
     train_sizes = [1000, 10000, 100000]
 
     # List of seeds for replicates

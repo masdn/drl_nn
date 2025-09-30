@@ -95,11 +95,17 @@ for file in loss_files:
     grouped_files[key].append((epochs, validation_loss, config["seed"]))
 
 # Convert results to DataFrame
+
 results_df = pd.DataFrame(results)
-print("\n=== Test Losses at Best Validation Epoch ===")
-print(results_df.groupby(["hidden_layers", "neurons", "optimizer", "learning_rate", "train_size"])[
-    "test_loss_at_best"
-].agg(["mean", "std", "min", "max"]))
+test_loss_table = results_df.groupby([
+    "hidden_layers", "neurons", "optimizer", "learning_rate", "train_size"
+])["test_loss_at_best"].agg(["mean", "std", "min", "max"])
+
+# Save the test loss table as CSV for report inclusion
+test_loss_table.to_csv("test_loss_table.csv")
+
+# Optionally, print a message to confirm
+print("Test loss table saved as test_loss_table.csv")
 
 # If timings were tracked, show mean ± std
 if timings:
@@ -108,6 +114,7 @@ if timings:
     print(timings_df.groupby(["hidden_layers", "neurons", "optimizer", "learning_rate", "train_size"])[
         "train_time"
     ].agg(["mean", "std"]))
+
 
 # --- Aggregate plots for each (learning_rate, train_size, optimizer) ---
 for key, runs in grouped_files.items():
@@ -122,3 +129,51 @@ for key, runs in grouped_files.items():
     plt.tight_layout()
     plt.savefig(os.path.join(plot_dir, f"val_loss_agg_lr{lr}_ts{ts}_opt{opt}.png"))
     plt.close()
+
+
+# --- Compare learning rates for same train_size, optimizer, and seed ---
+compare_lr = True
+if compare_lr:
+    from collections import defaultdict
+    lr_compare_groups = defaultdict(list)
+    for file in loss_files:
+        data = np.load(file, allow_pickle=True)
+        config = data["config"].item()
+        val_loss = data["validation_loss"]
+        epochs = np.arange(1, len(val_loss) + 1)
+        key = (config["train_size"], config["optimizer"], config["seed"])
+        lr_compare_groups[key].append((config["learning_rate"], epochs, val_loss))
+    for (ts, opt, seed), runs in lr_compare_groups.items():
+        plt.figure(figsize=(8,5))
+        for lr, epochs, val_loss in sorted(runs):
+            plt.plot(epochs, val_loss, label=f"lr={lr}")
+        plt.xlabel("Epoch")
+        plt.ylabel("Validation Loss")
+        plt.title(f"Validation Loss: train_size={ts}, opt={opt}, seed={seed}")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_dir, f"val_loss_compare_lr_ts{ts}_opt{opt}_seed{seed}.png"))
+        plt.close()
+
+# --- Compare training sizes for same learning rate, optimizer, and seed ---
+compare_ts = True
+if compare_ts:
+    ts_compare_groups = defaultdict(list)
+    for file in loss_files:
+        data = np.load(file, allow_pickle=True)
+        config = data["config"].item()
+        val_loss = data["validation_loss"]
+        epochs = np.arange(1, len(val_loss) + 1)
+        key = (config["learning_rate"], config["optimizer"], config["seed"])
+        ts_compare_groups[key].append((config["train_size"], epochs, val_loss))
+    for (lr, opt, seed), runs in ts_compare_groups.items():
+        plt.figure(figsize=(8,5))
+        for ts, epochs, val_loss in sorted(runs):
+            plt.plot(epochs, val_loss, label=f"train_size={ts}")
+        plt.xlabel("Epoch")
+        plt.ylabel("Validation Loss")
+        plt.title(f"Validation Loss: lr={lr}, opt={opt}, seed={seed}")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_dir, f"val_loss_compare_ts_lr{lr}_opt{opt}_seed{seed}.png"))
+        plt.close()
